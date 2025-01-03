@@ -10,13 +10,6 @@
 #include <unistd.h>
 #endif
 
-#define IMAGE_SIZE_LIMIT (15LL * 1024 * 1024 * 1024) // 15 GB
-#define VIDEO_SIZE_LIMIT (20LL * 1024 * 1024 * 1024) // 20 GB
-
-
-#define IMAGE_SIZE_LIMIT (15LL * 1024 * 1024 * 1024) // 15 GB
-#define VIDEO_SIZE_LIMIT (20LL * 1024 * 1024 * 1024) // 20 GB
-
 const char *imageExtensions[] = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff"};
 const char *videoExtensions[] = {".mp4", ".mkv", ".avi", ".mov", ".wmv"};
 
@@ -107,13 +100,39 @@ void process_files(const char *folderPath, const char **extensions, int extCount
     fclose(outputFile);
 }
 
+long long parse_size_limit(const char *input) {
+    char unit;
+    long long size;
+    if (sscanf(input, "%lld%c", &size, &unit) != 2) {
+        fprintf(stderr, "Invalid size format. Use format <number>[K|M|G].\n");
+        exit(EXIT_FAILURE);
+    }
+
+    switch (unit) {
+        case 'K':
+        case 'k':
+            return size * 1024LL;
+        case 'M':
+        case 'm':
+            return size * 1024LL * 1024LL;
+        case 'G':
+        case 'g':
+            return size * 1024LL * 1024LL * 1024LL;
+        default:
+            fprintf(stderr, "Invalid unit. Use K, M, or G.\n");
+            exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <folder_path>\n", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "Usage: %s <folder_path> <image_size_limit> <video_size_limit>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     const char *folderPath = argv[1];
+    long long imageSizeLimit = parse_size_limit(argv[2]);
+    long long videoSizeLimit = parse_size_limit(argv[3]);
 
     // Ensure output folder exists
     #ifdef _WIN32
@@ -123,10 +142,10 @@ int main(int argc, char *argv[]) {
     #endif
 
     // Process images
-    process_files(folderPath, imageExtensions, (int)(sizeof(imageExtensions) / sizeof(imageExtensions[0])), "./out/imageNames.txt", IMAGE_SIZE_LIMIT);
+    process_files(folderPath, imageExtensions, (int)(sizeof(imageExtensions) / sizeof(imageExtensions[0])), "./out/imageNames.txt", imageSizeLimit);
 
     // Process videos
-    process_files(folderPath, videoExtensions, (int)(sizeof(videoExtensions) / sizeof(videoExtensions[0])), "./out/videoNames.txt", VIDEO_SIZE_LIMIT);
+    process_files(folderPath, videoExtensions, (int)(sizeof(videoExtensions) / sizeof(videoExtensions[0])), "./out/videoNames.txt", videoSizeLimit);
 
     // Move identified files
     move_files_from_list(folderPath, "./out/imageNames.txt", "images");
