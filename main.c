@@ -4,6 +4,15 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
+#define IMAGE_SIZE_LIMIT (15LL * 1024 * 1024 * 1024) // 15 GB
+#define VIDEO_SIZE_LIMIT (20LL * 1024 * 1024 * 1024) // 20 GB
+
 
 #define IMAGE_SIZE_LIMIT (15LL * 1024 * 1024 * 1024) // 15 GB
 #define VIDEO_SIZE_LIMIT (20LL * 1024 * 1024 * 1024) // 20 GB
@@ -20,12 +29,56 @@ int is_extension_match(const char *filename, const char **extensions, int extCou
     return 0;
 }
 
+void move_file(const char *source, const char *destinationFolder) {
+    char destinationPath[2048];
+    snprintf(destinationPath, sizeof(destinationPath), "%s/%s", destinationFolder, strrchr(source, '/') + 1);
+    #ifdef _WIN32
+        MoveFile(source, destinationPath);
+    #else
+        rename(source, destinationPath);
+    #endif
+}
+
+void create_folder_if_not_exists(const char *folderPath) {
+    struct stat st = {0};
+    if (stat(folderPath, &st) == -1) {
+        #ifdef _WIN32
+            mkdir(folderPath);
+        #else
+            mkdir(folderPath, 0777);
+        #endif
+    }
+}
+
+void move_files_from_list(const char *folderPath, const char *fileName, const char *destinationFolderName) {
+    char sourcePath[2048];
+    char destinationFolder[2048];
+    char file[1024];
+
+    snprintf(destinationFolder, sizeof(destinationFolder), "%s/%s", folderPath, destinationFolderName);
+    create_folder_if_not_exists(destinationFolder);
+
+    FILE *fileList = fopen(fileName, "r");
+    if (!fileList) {
+        perror("Failed to open file list");
+        return;
+    }
+
+    while (fgets(file, sizeof(file), fileList)) {
+        file[strcspn(file, "\n")] = 0; // Remove newline character
+        snprintf(sourcePath, sizeof(sourcePath), "%s/%s", folderPath, file);
+        move_file(sourcePath, destinationFolder);
+    }
+
+    fclose(fileList);
+}
+
 void process_files(const char *folderPath, const char **extensions, int extCount, const char *outputFileName, long long sizeLimit) {
     DIR *dir;
     struct dirent *entry;
     struct stat fileStat;
     long long cumulativeSize = 0;
-    char filePath[1024];
+    char filePath[2048];
 
     FILE *outputFile = fopen(outputFileName, "w");
     if (!outputFile) {
@@ -75,7 +128,11 @@ int main(int argc, char *argv[]) {
     // Process videos
     process_files(folderPath, videoExtensions, (int)(sizeof(videoExtensions) / sizeof(videoExtensions[0])), "./out/videoNames.txt", VIDEO_SIZE_LIMIT);
 
-    printf("Processing completed. Results saved in ./out folder.\n");
+    // Move identified files
+    move_files_from_list(folderPath, "./out/imageNames.txt", "images");
+    move_files_from_list(folderPath, "./out/videoNames.txt", "videos");
+
+    printf("Processing and moving completed. Results saved in ./out folder.\n");
 
     return EXIT_SUCCESS;
 }
